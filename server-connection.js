@@ -5,8 +5,31 @@ const Peer = require('simple-peer');
 const wrtc = require('wrtc');
 
 const EVENT_CLIENT_DISCONNECT = 'client-disconnect';
+const EVENT_CLIENT_CONNECT = 'client-connect';
 const EVENT_MESSAGE = 'message';
 const EVENT_CONNECT = 'connect';
+
+class ClientConnection {
+  constructor(socket, peer) {
+    this.socket = socket;
+    this.peer = peer;
+    this.id = socket.id;
+  }
+
+  send(label, payload) {
+    this.socket.emit('msg', [label, payload]);
+  }
+
+  unreliablySend(label, payload) {
+    const encodedMessage = JSON.stringify([label, payload]);
+    this.peer.send(encodedMessage);
+  }
+
+  disconnect() {
+    this.socket.disconnect();
+    this.peer.destroy();
+  }
+}
 
 module.exports = class ServerConnection {
   constructor({ port = 8000, hostClient = true, clientPath = '/client' }) {
@@ -19,6 +42,7 @@ module.exports = class ServerConnection {
     });
 
     this.topics = {};
+    this.clients = [];
 
     if (hostClient) {
       app.use('/', express.static(__dirname + clientPath));
@@ -30,6 +54,7 @@ module.exports = class ServerConnection {
 
     io.on('connection', socket => {
       let peer;
+      let client;
 
       socket.on('request-rtc', () => {
         peer = new Peer({
@@ -45,40 +70,34 @@ module.exports = class ServerConnection {
           socket.emit('rtc-signal', data);
         });
 
-        peer.on('connect', () => {});
+        peer.on('connect', () => {
+          client = new ClientConnection(socket, peer);
+          this.clients.push(client);
 
-        peer.on('data', rawData => {
-          const json = rawData.toString();
-          const data = JSON.parse(json);
-          this.publish(EVENT_MESSAGE, data);
+          socket.on('msg', ([label, payload]) => {
+            this.publish(label, client, payload);
+          });
+
+          this.publish(EVENT_CLIENT_CONNECT, client.id);
         });
 
-        socket.on('rtc-signal', data => {
-          peer.signal(data);
+        peer.on('data', encodedData => {
+          const [label, payload] = JSON.parse(encodedData.toString());
+          this.publish(label, client, payload);
         });
+      });
+
+      socket.on('rtc-signal', data => {
+        peer.signal(data);
       });
 
       socket.on('disconnect', () => {
-        if (peer) {
-          peer.destroy();
-          peer = null;
-          this.publish(EVENT_CLIENT_DISCONNECT, socket.id);
-        }
+        if (peer) peer.destroy();
+        this.clients = this.clients.filter(c => c !== client);
+        if (client) this.publish(EVENT_CLIENT_DISCONNECT, client.id);
       });
     });
   }
-
-  /*   unreliablyEmit(label, data) {
-    const message = this.bundleMessage(label, data);
-    const json = JSON.stringify(message);
-
-    this.peer.send(json);
-  }
-
-  reliablyEmit(label, data) {
-    const message = this.bundleMessage(label, data);
-    this.socket.emit('msg', message);
-  } */
 
   publish(key, ...args) {
     if (this.topics[key]) {
@@ -91,12 +110,5 @@ module.exports = class ServerConnection {
   on(key, callback) {
     this.topics[key] = this.topics[key] || [];
     this.topics[key].push(callback);
-  }
-
-  bundleData(label, data) {
-    return {
-      l: label,
-      p: data
-    };
   }
 };

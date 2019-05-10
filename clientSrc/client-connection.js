@@ -2,7 +2,6 @@ const Peer = require('simple-peer');
 const io = require('socket.io-client');
 
 const EVENT_SOCKET_DISCONNECT = 'socket-disconnect';
-const EVENT_MESSAGE = 'message';
 const EVENT_CONNECT = 'connect';
 
 module.exports = class ClientConnection {
@@ -10,6 +9,8 @@ module.exports = class ClientConnection {
     this.socket = null;
     this.peer = null;
     this.topics = {};
+
+    this.connect();
   }
 
   on(key, callback) {
@@ -26,23 +27,13 @@ module.exports = class ClientConnection {
       });
   }
 
-  bundleMessage(label, data) {
-    return {
-      l: label,
-      p: data
-    };
+  unreliablySend(label, data) {
+    const encodedMessage = JSON.stringify([label, data]);
+    this.peer.send(encodedMessage);
   }
 
-  unreliablyEmit(label, data) {
-    const message = this.bundleMessage(label, data);
-    const json = JSON.stringify(message);
-
-    this.peer.send(json);
-  }
-
-  reliablyEmit(label, data) {
-    const message = this.bundleMessage(label, data);
-    this.socket.emit('msg', message);
+  send(label, data) {
+    this.socket.emit('msg', [label, data]);
   }
 
   connect() {
@@ -51,6 +42,8 @@ module.exports = class ClientConnection {
 
     socket.on('connect', () => {
       let peer = new Peer({
+        reliable: false,
+        ordered: false,
         channelConfig: {
           reliable: false,
           ordered: false
@@ -59,8 +52,8 @@ module.exports = class ClientConnection {
 
       this.peer = peer;
 
-      socket.on('msg', message => {
-        this.publish(EVENT_MESSAGE, message);
+      socket.on('msg', ([label, payload]) => {
+        this.publish(label, payload);
       });
 
       socket.on('rtc-signal', data => {
@@ -76,11 +69,9 @@ module.exports = class ClientConnection {
         this.publish(EVENT_CONNECT);
       });
 
-      peer.on('data', rawData => {
-        const json = rawData.toString();
-        const data = JSON.parse(json);
-
-        this.publish(EVENT_MESSAGE, data);
+      peer.on('data', encodedMessage => {
+        const [label, payload] = JSON.parse(encodedMessage.toString());
+        this.publish(label, payload);
       });
 
       socket.emit('request-rtc');
