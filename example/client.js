@@ -1,4 +1,4 @@
-const ClientConnection = require('./client-connection');
+const ClientConnection = require('../client-connection');
 
 const connection = new ClientConnection();
 

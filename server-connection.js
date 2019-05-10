@@ -6,7 +6,6 @@ const wrtc = require('wrtc');
 
 const EVENT_CLIENT_DISCONNECT = 'client-disconnect';
 const EVENT_CLIENT_CONNECT = 'client-connect';
-const EVENT_MESSAGE = 'message';
 const EVENT_CONNECT = 'connect';
 
 class ClientConnection {
@@ -45,7 +44,7 @@ module.exports = class ServerConnection {
     this.clients = [];
 
     if (hostClient) {
-      app.use('/', express.static(__dirname + clientPath));
+      app.use('/', express.static(clientPath));
     }
 
     expressHttp.listen(port, () => {
