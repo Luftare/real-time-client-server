@@ -1,0 +1,13 @@
+{
+  "events": {
+    "restart": "cross-env NODE_ENV=development & parcel build clientSrc/index.html --no-minify --out-dir client",
+    "start": "cross-env NODE_ENV=development & parcel build clientSrc/index.html --no-minify --out-dir client"
+  },
+  "ignore": [
+    "client/*",
+    "node_modules",
+    ".cache",
+    "package.json",
+    "package-lock.json"
+  ]
+}
